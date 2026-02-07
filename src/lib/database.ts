@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Componente, ImportResult, ProcessingStatus, HistoricoPreco, Marca } from '../types';
+import { Componente, ImportResult, ProcessingStatus, HistoricoPreco, Marca, Desconto } from '../types';
 
 const BATCH_SIZE = 1000; 
 
@@ -15,6 +15,8 @@ export async function getMarcas(client: SupabaseClient): Promise<Marca[]> {
   }
   return data || [];
 }
+
+// === COMPONENTES (PREÇOS) ===
 
 export async function inserirComponentes(
   client: SupabaseClient,
@@ -88,7 +90,36 @@ export async function inserirComponentes(
   return result;
 }
 
-// === FUNÇÕES DE LEITURA (COM ORDENAÇÃO SERVER-SIDE) ===
+// === DESCONTOS (NOVO) ===
+
+export async function listarDescontos(client: SupabaseClient, idmarca: number): Promise<Desconto[]> {
+  const { data, error } = await client
+    .from('tbldescontos')
+    .select('*')
+    .eq('idmarca', idmarca)
+    .order('grupo_desconto');
+
+  if (error) {
+    console.error('Erro listarDescontos:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function upsertDescontos(client: SupabaseClient, descontos: Desconto[]): Promise<{ sucesso: boolean; msg?: string }> {
+  try {
+    const { error } = await client
+      .from('tbldescontos')
+      .upsert(descontos, { onConflict: 'idmarca, grupo_desconto' });
+
+    if (error) return { sucesso: false, msg: error.message };
+    return { sucesso: true };
+  } catch (err) {
+    return { sucesso: false, msg: err instanceof Error ? err.message : 'Erro desconhecido' };
+  }
+}
+
+// === FUNÇÕES DE LEITURA COMPONENTES ===
 
 export async function contarComponentes(client: SupabaseClient, idmarca?: number) {
   let query = client.from('tblcomponentes').select('*', { count: 'exact', head: true });
@@ -112,7 +143,6 @@ export async function listarComponentes(
   if (idmarca) query = query.eq('idmarca', idmarca);
   if (pesquisa) query = query.or(`referencia.ilike.%${pesquisa}%,descricao.ilike.%${pesquisa}%`);
 
-  // Aplica a ordenação dinâmica na query SQL
   const { data, count, error } = await query
     .order(sortField, { ascending: sortOrder === 'asc' })
     .range(offset, offset + perPage - 1);
@@ -148,7 +178,6 @@ export async function listarComponentesHistorico(
   if (idmarca) query = query.eq('idmarca', idmarca);
   if (pesquisa) query = query.ilike('referencia_backup', `%${pesquisa}%`);
 
-  // Aplica a ordenação dinâmica na query SQL
   const { data, count, error } = await query
     .order(sortField, { ascending: sortOrder === 'asc' })
     .range(offset, offset + porPagina - 1);

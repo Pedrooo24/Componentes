@@ -21,6 +21,14 @@ export interface Marca {
   nome: string;
 }
 
+export interface Desconto {
+  iddesconto?: number;
+  idmarca: number;
+  grupo_desconto: string;
+  valor_desconto: number;
+  updated_at?: string;
+}
+
 // Histórico de preços (tblcomponentes_historico)
 export interface HistoricoPreco {
   idmarca: number;

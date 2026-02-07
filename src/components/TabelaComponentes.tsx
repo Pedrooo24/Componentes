@@ -24,6 +24,10 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
   const [marcas, setMarcas] = useState<Marca[]>([]);
   const [contagens, setContagens] = useState<Record<number, number>>({});
   
+  // Otimização: Mapa de descontos GLOBAL para acesso O(1)
+  // Chave: "IDMARCA-GRUPO" (ex: "1-MPG001") -> Valor: 35
+  const [mapaDescontos, setMapaDescontos] = useState<Record<string, number>>({});
+
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
@@ -34,12 +38,43 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
   useEffect(() => {
     carregarMarcas();
     verificarDataMaisRecente();
+    // Carregamos os descontos UMA VEZ para todas as marcas
+    carregarTodosDescontos();
   }, [supabaseClient, refreshTrigger]);
 
   useEffect(() => {
     carregarDados();
     carregarContagens();
-  }, [supabaseClient, pagina, pesquisa, marcaSelecionada, refreshTrigger, sortField, sortOrder]);
+    // ADICIONADO: 'marcas' aqui para recalcular contagens assim que as marcas carregam
+  }, [supabaseClient, pagina, pesquisa, marcaSelecionada, refreshTrigger, sortField, sortOrder, marcas]);
+
+  // Nova função para carregar TUDO de uma vez
+  const carregarTodosDescontos = async () => {
+    try {
+      const { data, error } = await supabaseClient
+        .from('tbldescontos')
+        .select('idmarca, grupo_desconto, valor_desconto');
+
+      if (error) throw error;
+      
+      const mapa: Record<string, number> = {};
+      data?.forEach((r: any) => {
+        if (r.grupo_desconto && r.idmarca) {
+          // Criamos uma chave única combinando Marca e Grupo
+          // Usamos trim() para garantir que espaços extra não estragam o match
+          const chave = `${r.idmarca}-${String(r.grupo_desconto).trim()}`;
+          
+          // LÓGICA DE CORREÇÃO AQUI: Se for decimal (ex: 0.69), converte para 69.
+          mapa[chave] = (r.valor_desconto > 0 && r.valor_desconto <= 1) 
+            ? r.valor_desconto * 100 
+            : r.valor_desconto;
+        }
+      });
+      setMapaDescontos(mapa);
+    } catch (err) {
+      console.error("Erro ao carregar mapa de descontos:", err);
+    }
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -56,6 +91,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
     setPagina(1);
     setPesquisa('');
     verificarDataMaisRecente();
+    carregarTodosDescontos(); // Recarrega descontos também
   };
 
   const carregarMarcas = async () => {
@@ -79,6 +115,9 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
   };
 
   const carregarContagens = async () => {
+    // Se não houver marcas carregadas, não vale a pena contar
+    if (marcas.length === 0) return;
+
     const novasContagens: Record<number, number> = {};
     for (const marca of marcas) {
       novasContagens[marca.idmarca] = await contarComponentes(supabaseClient, marca.idmarca);
@@ -88,7 +127,6 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
 
   const carregarDados = async () => {
     setLoading(true);
-    // Chama a função atualizada que aceita os argumentos de ordenação
     const { data, total: totalCount } = await listarComponentes(
       supabaseClient, 
       pagina, 
@@ -130,7 +168,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
     });
   };
 
-  // Header style - sem verde nojento
+  // ADICIONADO: cursor-pointer explicitamente para garantir UX correta
   const thBase = "px-4 py-3 text-xs font-semibold uppercase cursor-pointer select-none group transition-colors border-b border-[#30363d] hover:text-[#f0f6fc]";
   const thContent = "flex items-center justify-center gap-1";
 
@@ -165,7 +203,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
           </div>
           <motion.button
             onClick={handleRefresh}
-            className="p-2 rounded-lg hover:bg-[#21262d] text-[#8b949e] transition-colors"
+            // ADICIONADO: cursor-pointer
+            className="p-2 rounded-lg hover:bg-[#21262d] text-[#8b949e] transition-colors cursor-pointer"
             title="Limpar Filtros e Atualizar"
             whileTap={{ scale: 0.95 }}
           >
@@ -176,7 +215,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
         <div className="flex gap-2 flex-wrap mb-4">
           <motion.button
             onClick={() => { setMarcaSelecionada(undefined); setPagina(1); }}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+            // ADICIONADO: cursor-pointer
+            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all cursor-pointer"
             style={{
               backgroundColor: marcaSelecionada === undefined ? '#208080' : '#21262d',
               color: marcaSelecionada === undefined ? '#0d1117' : '#8b949e',
@@ -191,7 +231,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
             <motion.button
               key={marca.idmarca}
               onClick={() => { setMarcaSelecionada(marca.idmarca); setPagina(1); }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-all"
+              // ADICIONADO: cursor-pointer
+              className="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-all cursor-pointer"
               style={{
                 backgroundColor: marcaSelecionada === marca.idmarca ? '#208080' : '#21262d',
                 color: marcaSelecionada === marca.idmarca ? '#0d1117' : '#8b949e',
@@ -220,7 +261,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
           {pesquisa && (
             <button
               onClick={() => { setPesquisa(''); setPagina(1); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-slate-700/50 text-slate-500 hover:text-slate-300 transition-colors"
+              // ADICIONADO: cursor-pointer
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-slate-700/50 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -242,7 +284,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
                 <div className={thContent}>Marca {renderSortIcon('idmarca')}</div>
               </th>
               <th onClick={() => handleSort('grupo_desconto')} className={`${thBase} text-[#8b949e]`}>
-                <div className={thContent}>Grupo Desconto {renderSortIcon('grupo_desconto')}</div>
+                <div className={thContent}>Desconto {renderSortIcon('grupo_desconto')}</div>
               </th>
               <th onClick={() => handleSort('preco_tabela')} className={`${thBase} text-[#8b949e]`}>
                 <div className={thContent}>Preço {renderSortIcon('preco_tabela')}</div>
@@ -277,6 +319,10 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
                 componentes.map((comp, index) => {
                   const isRisk = isProdutoAntigo(comp.updated_at);
                   
+                  // Lógica de Cruzamento: Agora usa ID da Marca + Grupo para ser preciso
+                  const chaveMatch = `${comp.idmarca}-${String(comp.grupo_desconto || '').trim()}`;
+                  const valorDesconto = mapaDescontos[chaveMatch];
+                  
                   return (
                     <motion.tr
                       key={comp.idcomponente}
@@ -302,9 +348,19 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
                           {getNomeMarca(comp.idmarca)}
                         </span>
                       </td>
+                      
+                      {/* CÉLULA DESCONTO CORRIGIDA: Texto Branco, Font Medium */}
                       <td className="px-4 py-3 text-center">
-                        <span className="text-sm text-[#8b949e]">{comp.grupo_desconto || '—'}</span>
+                        {valorDesconto !== undefined ? (
+                           <div className="flex flex-col items-center">
+                             <span className="text-base font-medium text-[#f0f6fc] tabular-nums">{valorDesconto}%</span>
+                             <span className="text-[10px] text-[#6e7681] opacity-60">{comp.grupo_desconto}</span>
+                           </div>
+                        ) : (
+                          <span className="text-sm text-[#8b949e]">{comp.grupo_desconto || '—'}</span>
+                        )}
                       </td>
+
                       <td className="px-4 py-3 text-center">
                         <span className={`font-medium tabular-nums ${isRisk ? 'text-red-300/60' : 'text-[#f0f6fc]'}`}>
                           {formatarPreco(comp.preco_tabela)}
@@ -318,7 +374,6 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
                           <span className={`text-xs tabular-nums px-2 py-1 rounded ${isRisk ? 'text-red-400/70 font-medium' : 'text-[#6e7681]'}`}>
                             {formatarData(comp.updated_at)}
                           </span>
-                          {/* ALERTA SUBTIL */}
                           {isRisk && (
                             <div className="relative group" title="Risco: Dados antigos">
                               <AlertTriangle className="w-3.5 h-3.5 text-red-500/60 cursor-help hover:text-red-500 transition-colors" />
@@ -345,7 +400,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
             <button
               onClick={() => setPagina(p => Math.max(1, p - 1))}
               disabled={pagina === 1}
-              className="p-2 rounded-lg bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:border-[#208080] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              // ADICIONADO: cursor-pointer
+              className="p-2 rounded-lg bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:border-[#208080] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -355,7 +411,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
             <button
               onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
               disabled={pagina === totalPaginas}
-              className="p-2 rounded-lg bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:border-[#208080] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              // ADICIONADO: cursor-pointer
+              className="p-2 rounded-lg bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:border-[#208080] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
