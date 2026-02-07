@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/* Custom Dark Theme — Teal #208080 Palette */
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --border-color: #30363d;
+  --border-light: #3d444d;
+  --text-primary: #f0f6fc;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --teal-primary: #208080;
+  --teal-secondary: #1a6a6a;
+  --teal-hover: #165c5c;
+  --teal-accent: #2aa0a0;
+  --teal-glow: rgba(32, 128, 128, 0.15);
+  --teal-glow-strong: rgba(32, 128, 128, 0.3);
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-light);
+}
+
+/* Glow utilities */
+.teal-glow {
+  box-shadow: 0 0 20px var(--teal-glow), 0 0 40px var(--teal-glow);
+}
+
+.teal-glow-strong {
+  box-shadow: 0 0 20px var(--teal-glow-strong), 0 0 40px var(--teal-glow-strong);
+}
+
+/* Transitions */
+.transition-smooth {
+  transition: all 0.2s ease;
+}
+
+/* Input focus */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+}
+
+/* Table hover */
+.table-row-hover {
+  transition: background-color 0.15s ease;
+}
+
+.table-row-hover:hover {
+  background-color: rgba(32, 128, 128, 0.04);
+}
+
+/* Selection */
+::selection {
+  background-color: rgba(32, 128, 128, 0.3);
+  color: #f0f6fc;
+}
