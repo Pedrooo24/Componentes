@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, RefreshCw, History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, History, ChevronLeft, ChevronRight, X, ArrowUp, ArrowDown } from 'lucide-react';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { listarComponentesHistorico, contarComponentesHistorico } from '../lib/database';
@@ -11,6 +11,9 @@ interface Props {
   refreshTrigger: number;
 }
 
+type SortField = 'referencia_backup' | 'precoatual_anterior' | 'valido_ate' | 'idmarca';
+type SortOrder = 'asc' | 'desc';
+
 export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
   const [historico, setHistorico] = useState<HistoricoPreco[]>([]);
   const [total, setTotal] = useState(0);
@@ -21,6 +24,10 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
   const [marcas, setMarcas] = useState<Marca[]>([]);
   const [contagens, setContagens] = useState<Record<number, number>>({});
 
+  // Ordenação
+  const [sortField, setSortField] = useState<SortField>('valido_ate');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
   const porPagina = 20;
 
   useEffect(() => {
@@ -30,7 +37,23 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
   useEffect(() => {
     carregarDados();
     carregarContagens();
-  }, [supabaseClient, pagina, pesquisa, marcaSelecionada, refreshTrigger, marcas.length]);
+  }, [supabaseClient, pagina, pesquisa, marcaSelecionada, refreshTrigger, sortField, sortOrder, marcas.length]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const handleRefresh = () => {
+    setSortField('valido_ate');
+    setSortOrder('desc');
+    setPagina(1);
+    setPesquisa('');
+  };
 
   const carregarMarcas = async () => {
     const marcasDB = await buscarMarcas(supabaseClient);
@@ -49,8 +72,15 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
   const carregarDados = async () => {
     setLoading(true);
     const { data, total: totalCount } = await listarComponentesHistorico(
-      supabaseClient, pagina, porPagina, marcaSelecionada, pesquisa
+      supabaseClient, 
+      pagina, 
+      porPagina, 
+      marcaSelecionada, 
+      pesquisa,
+      sortField,
+      sortOrder
     );
+
     setHistorico(data);
     setTotal(totalCount);
     setLoading(false);
@@ -76,11 +106,18 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
     });
   };
 
-  const thStyle: React.CSSProperties = {
-    color: '#8b949e',
-    borderBottom: '1px solid #30363d',
-    letterSpacing: '0.05em',
-    textAlign: 'center',
+  const thBase = "px-6 py-4 text-xs font-semibold uppercase cursor-pointer select-none group transition-colors border-b border-[#30363d] hover:text-[#f0f6fc]";
+  const thContent = "flex items-center justify-center gap-1";
+
+  const renderSortIcon = (field: SortField) => {
+    const active = sortField === field;
+    return (
+      <span className={`flex flex-col items-center justify-center w-3 h-3 transition-opacity ${active ? 'opacity-100' : 'opacity-20 group-hover:opacity-50'}`}>
+        {active && sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#208080]" /> : 
+         active && sortOrder === 'desc' ? <ArrowDown className="w-3 h-3 text-[#208080]" /> : 
+         <div className="flex flex-col"><ArrowUp className="w-2 h-2" /><ArrowDown className="w-2 h-2" /></div>}
+      </span>
+    );
   };
 
   return (
@@ -103,11 +140,9 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
             </div>
           </div>
           <motion.button
-            onClick={() => { carregarDados(); carregarContagens(); }}
-            className="p-2 rounded-lg"
-            title="Atualizar"
-            style={{ color: '#8b949e' }}
-            whileHover={{ backgroundColor: '#21262d' }}
+            onClick={handleRefresh}
+            className="p-2 rounded-lg hover:bg-[#21262d] text-[#8b949e] transition-colors"
+            title="Limpar Filtros e Atualizar"
             whileTap={{ scale: 0.95 }}
           >
             <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
@@ -118,7 +153,7 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
         <div className="flex gap-2 flex-wrap mb-4">
           <motion.button
             onClick={() => { setMarcaSelecionada(undefined); setPagina(1); }}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
             style={{
               backgroundColor: marcaSelecionada === undefined ? '#208080' : '#21262d',
               color: marcaSelecionada === undefined ? '#0d1117' : '#8b949e',
@@ -133,7 +168,7 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
             <motion.button
               key={marca.idmarca}
               onClick={() => { setMarcaSelecionada(marca.idmarca); setPagina(1); }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-all"
               style={{
                 backgroundColor: marcaSelecionada === marca.idmarca ? '#208080' : '#21262d',
                 color: marcaSelecionada === marca.idmarca ? '#0d1117' : '#8b949e',
@@ -145,10 +180,7 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
               {marca.nome}
               <span
                 className="px-1.5 py-0.5 rounded text-xs"
-                style={{
-                  backgroundColor: marcaSelecionada === marca.idmarca ? 'rgba(0,0,0,0.2)' : '#30363d',
-                  color: marcaSelecionada === marca.idmarca ? '#0d1117' : '#6e7681'
-                }}
+                style={{ backgroundColor: 'rgba(0,0,0,0.2)' }}
               >
                 {contagens[marca.idmarca] || 0}
               </span>
@@ -156,86 +188,91 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
           ))}
         </div>
 
-        {/* Pesquisa */}
+        {/* Pesquisa com 'X' */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: '#6e7681' }} />
-          <motion.input
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6e7681]" />
+          <input
             type="text"
             value={pesquisa}
             onChange={(e) => { setPesquisa(e.target.value); setPagina(1); }}
             placeholder="Pesquisar por referência..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg text-sm focus:outline-none"
-            style={{ backgroundColor: '#0d1117', border: '1px solid #30363d', color: '#f0f6fc' }}
-            whileFocus={{ borderColor: '#208080', boxShadow: '0 0 0 2px rgba(32, 128, 128, 0.2)' }}
+            className="w-full pl-10 pr-10 py-2.5 rounded-lg text-sm focus:outline-none bg-[#0d1117] border border-[#30363d] text-[#f0f6fc] focus:border-[#208080] transition-colors"
           />
+          {pesquisa && (
+            <button
+              onClick={() => { setPesquisa(''); setPagina(1); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-slate-700/50 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Tabela */}
       <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead style={{ backgroundColor: '#0d1117' }}>
+        <table className="w-full border-collapse">
+          <thead className="bg-[#0d1117]">
             <tr>
-              <th className="px-4 py-3 text-center text-xs font-semibold uppercase" style={thStyle}>Referência</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold uppercase" style={thStyle}>Marca</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold uppercase" style={thStyle}>Preço</th>
-              <th className="px-4 py-3 text-center text-xs font-semibold uppercase" style={thStyle}>Válido Até</th>
+              <th onClick={() => handleSort('referencia_backup')} className={`${thBase} text-[#8b949e] hover:text-[#f0f6fc]`}>
+                <div className={thContent}>Referência {renderSortIcon('referencia_backup')}</div>
+              </th>
+              <th onClick={() => handleSort('idmarca')} className={`${thBase} text-[#8b949e] hover:text-[#f0f6fc]`}>
+                <div className={thContent}>Marca {renderSortIcon('idmarca')}</div>
+              </th>
+              <th onClick={() => handleSort('precoatual_anterior')} className={`${thBase} text-[#8b949e] hover:text-[#f0f6fc]`}>
+                <div className={thContent}>Preço Anterior {renderSortIcon('precoatual_anterior')}</div>
+              </th>
+              <th onClick={() => handleSort('valido_ate')} className={`${thBase} text-[#8b949e] hover:text-[#f0f6fc]`}>
+                <div className={thContent}>Válido Até {renderSortIcon('valido_ate')}</div>
+              </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-700/50">
             <AnimatePresence mode="wait">
               {loading ? (
                 <motion.tr key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <td colSpan={4} className="px-4 py-12 text-center" style={{ color: '#8b949e' }}>
+                  <td colSpan={4} className="px-4 py-12 text-center text-[#8b949e]">
                     <div className="flex flex-col items-center gap-3">
-                      <motion.div
-                        className="w-8 h-8 rounded-full"
-                        style={{ border: '2.5px solid #30363d', borderTopColor: '#208080' }}
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                      />
+                      <div className="w-8 h-8 rounded-full border-[2.5px] border-[#30363d] border-t-[#208080] animate-spin" />
                       <span className="text-sm">A carregar histórico...</span>
                     </div>
                   </td>
                 </motion.tr>
               ) : historico.length === 0 ? (
                 <motion.tr key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <td colSpan={4} className="px-4 py-12 text-center" style={{ color: '#6e7681' }}>
+                  <td colSpan={4} className="px-4 py-12 text-center text-[#6e7681]">
                     <History className="w-10 h-10 mx-auto mb-3 opacity-40" />
                     <p>Nenhum registo de histórico encontrado</p>
                   </td>
                 </motion.tr>
               ) : (
-                historico.map((row: HistoricoPreco, index: number) => (
+                historico.map((item, idx) => (
                   <motion.tr
-                    key={`${row.idmarca}-${row.referencia_backup}-${row.valido_ate ?? index}`}
+                    key={`${item.idmarca}-${item.referencia_backup}-${item.valido_ate ?? idx}`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: index * 0.015 }}
-                    className="table-row-hover"
-                    style={{ borderBottom: '1px solid #21262d' }}
+                    transition={{ delay: idx * 0.01 }}
+                    className="hover:bg-[#1c2128] transition-colors border-b border-[#21262d]"
                   >
-                    <td className="px-4 py-3 text-left">
-                      <span className="font-mono text-sm font-medium" style={{ color: '#2aa0a0' }}>
-                        {row.referencia_backup}
+                    <td className="px-6 py-4 text-center">
+                      <span className="font-mono text-sm font-medium text-[#2aa0a0]">
+                        {item.referencia_backup}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className="text-xs px-2 py-1 rounded-md font-medium"
-                        style={{ backgroundColor: 'rgba(32, 128, 128, 0.12)', color: '#208080' }}
-                      >
-                        {getNomeMarca(row.idmarca)}
+                    <td className="px-6 py-4 text-center">
+                      <span className="text-xs px-2 py-1 rounded-md font-medium bg-[#208080]/10 text-[#208080]">
+                        {getNomeMarca(item.idmarca)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="font-medium tabular-nums" style={{ color: '#f0f6fc' }}>
-                        {formatarPreco(row.precoatual_anterior)}
+                    <td className="px-6 py-4 text-center">
+                      <span className="font-medium tabular-nums text-[#f0f6fc]">
+                        {formatarPreco(item.precoatual_anterior)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="text-xs tabular-nums" style={{ color: '#6e7681' }}>
-                        {formatarData(row.valido_ate ?? undefined)}
+                    <td className="px-6 py-4 text-center">
+                      <span className="text-xs tabular-nums text-[#6e7681]">
+                        {formatarData(item.valido_ate ?? undefined)}
                       </span>
                     </td>
                   </motion.tr>
@@ -248,34 +285,28 @@ export function TabelaHistorico({ supabaseClient, refreshTrigger }: Props) {
 
       {/* Paginação */}
       {totalPaginas > 1 && (
-        <div className="px-5 py-3 flex items-center justify-between" style={{ borderTop: '1px solid #30363d', backgroundColor: '#0d1117' }}>
-          <p className="text-sm" style={{ color: '#8b949e' }}>
+        <div className="px-5 py-3 flex items-center justify-between border-t border-[#30363d] bg-[#0d1117]">
+          <p className="text-sm text-[#8b949e]">
             {((pagina - 1) * porPagina) + 1}–{Math.min(pagina * porPagina, total)} de {total}
           </p>
           <div className="flex items-center gap-2">
-            <motion.button
+            <button
               onClick={() => setPagina(p => Math.max(1, p - 1))}
               disabled={pagina === 1}
-              className="p-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ backgroundColor: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}
-              whileHover={pagina !== 1 ? { scale: 1.05, borderColor: '#208080' } : {}}
-              whileTap={pagina !== 1 ? { scale: 0.95 } : {}}
+              className="p-2 rounded-lg bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:border-[#208080] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
-            </motion.button>
-            <span className="text-sm px-2 tabular-nums" style={{ color: '#8b949e' }}>
+            </button>
+            <span className="text-sm px-2 tabular-nums text-[#8b949e]">
               {pagina} / {totalPaginas}
             </span>
-            <motion.button
+            <button
               onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
               disabled={pagina === totalPaginas}
-              className="p-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ backgroundColor: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}
-              whileHover={pagina !== totalPaginas ? { scale: 1.05, borderColor: '#208080' } : {}}
-              whileTap={pagina !== totalPaginas ? { scale: 0.95 } : {}}
+              className="p-2 rounded-lg bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:border-[#208080] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
-            </motion.button>
+            </button>
           </div>
         </div>
       )}
