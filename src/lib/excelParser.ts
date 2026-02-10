@@ -160,7 +160,7 @@ export async function lerExcel(file: File): Promise<RawData> {
     // codepage 65001 = UTF-8 para preservar caracteres especiais
     const workbook = XLSX.read(data, {
         type: 'array',
-        codepage: 65001,
+        // codepage: 65001, // REMOVIDO: Permitir auto-deteção (o user pode ter ficheiros Windows-1252)
         raw: false,       // formata números mas preserva strings
     });
 
