@@ -153,21 +153,58 @@ interface RawData {
  * Lê um ficheiro Excel (.xlsx/.xls).
  * Procura a sheet 'P'; se não existir, usa a primeira e avisa.
  */
+/**
+ * Lê um ficheiro Excel (.xlsx/.xls).
+ * Implementa deteção de Magic Bytes para distinguir Excel real (ZIP/OLE) de Texto/CSV.
+ * Se for Texto/CSV, FORÇA decoding Windows-1252 para evitar "????" em caracteres portugueses.
+ */
 export async function lerExcel(file: File): Promise<RawData> {
     const avisos: string[] = [];
-    const data = await file.arrayBuffer();
+    const arrayBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
 
-    // codepage 65001 = UTF-8 para preservar caracteres especiais
-    const workbook = XLSX.read(data, {
-        type: 'array',
-        // codepage: 65001, // REMOVIDO: Permitir auto-deteção (o user pode ter ficheiros Windows-1252)
-        raw: false,       // formata números mas preserva strings
-    });
+    // Deteção de Magic Bytes
+    const isZip = data[0] === 0x50 && data[1] === 0x4B && data[2] === 0x03 && data[3] === 0x04; // .xlsx
+    const isOle = data[0] === 0xD0 && data[1] === 0xCF && data[2] === 0x11 && data[3] === 0xE0; // .xls
+
+    let workbook: XLSX.WorkBook;
+
+    if (isZip || isOle) {
+        // Formato Binário Real (XLSX ou XLS) - Deixar a lib gerir (normalmente é UTF-8 ou interno)
+        workbook = XLSX.read(data, {
+            type: 'array',
+            // Sem codepage forçado para formatos binários nativos
+            raw: false,
+        });
+    } else {
+        // Formato Texto/CSV disfarçado (comuns em exports antigos)
+        // FORÇAR Windows-1252 (ANSI PT) pois UTF-8 falha aqui
+        avisos.push('Aviso: O ficheiro parece ser Texto/CSV. A forçar descodificação Windows-1252.');
+
+        try {
+            const decoder = new TextDecoder('windows-1252');
+            const text = decoder.decode(data);
+            workbook = XLSX.read(text, {
+                type: 'string',
+                raw: false,
+            });
+        } catch (e) {
+            console.error('Falha ao descodificar Windows-1252, a tentar UTF-8 fallback', e);
+            // Fallback para UTF-8 normal se falhar (raro)
+            workbook = XLSX.read(data, { type: 'array' });
+        }
+    }
 
     let sheetName = 'P';
     if (!workbook.SheetNames.includes('P')) {
-        sheetName = workbook.SheetNames[0];
-        avisos.push(`Folha "P" não encontrada. A usar a folha "${sheetName}".`);
+        // Tenta encontrar sheet P case-insensitive
+        const pMatch = workbook.SheetNames.find(s => s.toLowerCase() === 'p');
+        if (pMatch) {
+            sheetName = pMatch;
+        } else {
+            sheetName = workbook.SheetNames[0];
+            avisos.push(`Folha "P" não encontrada. A usar a folha "${sheetName}".`);
+        }
     }
 
     const worksheet = workbook.Sheets[sheetName];
