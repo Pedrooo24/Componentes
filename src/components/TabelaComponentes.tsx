@@ -115,8 +115,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
         .from('tblcomponentes')
         .select('updated_at')
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .order('updated_at', { ascending: false })
+        .maybeSingle();
 
       if (data) setDataMaisRecenteGlobal(data.updated_at);
     } catch (err) {
