@@ -24,7 +24,7 @@ export function AnimatedBorder({ children, isActive = false, className = '' }: A
         }
         .animated-border-gradient {
           position: absolute;
-          inset: 0;
+          inset: -100%;
           background: conic-gradient(
             from 0deg,
             transparent 0deg,

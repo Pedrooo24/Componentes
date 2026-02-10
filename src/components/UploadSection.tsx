@@ -58,6 +58,7 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
 
   // Upload
   const [isUploading, setIsUploading] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [resultado, setResultado] = useState<ImportResult | null>(null);
   const [resultadoDescontos, setResultadoDescontos] = useState<{ total: number } | null>(null);
   const [erroUpload, setErroUpload] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
     const res = await buscarMarcasResult(supabaseClient);
     setMarcas(res.data);
     if (res.data.length > 0 && !marcaSelecionada) {
-      setMarcaSelecionada(res.data[0].idmarca);
+      // setMarcaSelecionada(res.data[0].idmarca); // REMOVIDO: Obrigatório selecionar explicitamente
     }
   };
 
@@ -139,20 +140,25 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
   const handleValidar = async () => {
     setErrosValidacao([]);
     setValidation(null);
-
-    // Verificar se tem dados
-    const temDados = inputMode === 'ficheiro' ? !!ficheiro : textoColado.trim().length > 0;
-    if (!temDados) {
-      setErrosValidacao(['Nenhum dado fornecido. Arrasta um ficheiro Excel ou cola os dados.']);
-      return;
-    }
-
-    if (!marcaSelecionada) {
-      setErrosValidacao(['Seleciona uma marca antes de validar.']);
-      return;
-    }
+    setIsValidating(true);
 
     try {
+
+      // Verificar se tem dados
+      const temDados = inputMode === 'ficheiro' ? !!ficheiro : textoColado.trim().length > 0;
+      if (!temDados) {
+        setErrosValidacao(['Nenhum dado fornecido. Arrasta um ficheiro Excel ou cola os dados.']);
+        return;
+      }
+
+      if (!marcaSelecionada) {
+        setErrosValidacao(['Seleciona uma marca antes de validar.']);
+        return;
+      }
+
+
+      // try { foi aberto acima
+
       // 1. Ler dados
       let rows: unknown[][];
       const avisos: string[] = [];
@@ -217,6 +223,8 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
       setErrosValidacao([
         `Erro ao processar: ${err instanceof Error ? err.message : 'Erro desconhecido'}`
       ]);
+    } finally {
+      setIsValidating(false);
     }
   };
 
@@ -507,13 +515,17 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
               {/* Botão Validar */}
               <motion.button
                 onClick={handleValidar}
-                disabled={(!ficheiro && !textoColado.trim()) || !marcaSelecionada}
+                disabled={(!ficheiro && !textoColado.trim()) || !marcaSelecionada || isValidating}
                 className="w-full py-3 font-semibold rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 style={{ backgroundColor: '#208080', color: '#f0f6fc' }}
                 whileTap={{ scale: 0.98 }}
               >
-                <CheckCircle2 className="w-5 h-5" />
-                Validar e Pré-visualizar
+                {isValidating ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5" />
+                )}
+                {isValidating ? 'A Validar...' : 'VALIDAR'}
               </motion.button>
             </motion.div>
           )}

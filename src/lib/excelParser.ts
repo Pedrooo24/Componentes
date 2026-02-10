@@ -9,7 +9,7 @@ import {
 // ============================================================================
 
 type CampoBD = 'referencia' | 'descricao' | 'preco_tabela' | 'grupo_desconto' |
-    'valor_desconto' | 'familia' | 'ean' | 'peso' | 'quantidade_minima';
+    'valor_desconto' | 'familia' | 'ean' | 'peso' | 'quantidade_minima' | 'unidade';
 
 /**
  * Mapeamento normalizado: header Excel (lowercase, sem acentos) → campo BD.
@@ -71,6 +71,13 @@ const HEADER_MAP: Record<string, CampoBD> = {
     'ean13': 'ean',
     'gtin': 'ean',
     'barcode': 'ean',
+
+    // Unidade (opcional)
+    'unidade': 'unidade',
+    'uni': 'unidade',
+    'unid': 'unidade',
+    'unid.': 'unidade',
+    'unit': 'unidade',
 
     // Peso (opcional)
     'peso': 'peso',
@@ -316,6 +323,7 @@ export function validarHeaders(rows: unknown[][]): HeaderValidation {
     const opcionais: Array<{ campo: string; label: string }> = [
         { campo: 'familia', label: 'Família' },
         { campo: 'ean', label: 'Ean' },
+        { campo: 'unidade', label: 'Unidade' },
         { campo: 'peso', label: 'Peso' },
         { campo: 'quantidade_minima', label: 'Quantidade' },
     ];
@@ -326,12 +334,12 @@ export function validarHeaders(rows: unknown[][]): HeaderValidation {
         }
     }
 
-    // Avisos de headers desconhecidos
-    if (melhorDesconhecidos.length > 0) {
-        resultado.avisos.push(
-            `Colunas ignoradas (não reconhecidas): ${melhorDesconhecidos.join(', ')}`
-        );
-    }
+    // Avisos de headers desconhecidos - DESATIVADO a pedido do utilizador
+    // if (melhorDesconhecidos.length > 0) {
+    //     resultado.avisos.push(
+    //         `Colunas ignoradas (não reconhecidas): ${melhorDesconhecidos.join(', ')}`
+    //     );
+    // }
 
     resultado.valido = resultado.headersObrigatoriosEmFalta.length === 0;
 
@@ -406,6 +414,7 @@ export function processarComponentes(
         const preco = paraNumero(getVal(row, 'preco_tabela'));
         const familia = limparValor(getVal(row, 'familia'));
         const ean = limparValor(getVal(row, 'ean'));
+        const unidade = limparValor(getVal(row, 'unidade')) || 'UN';
         const peso = paraNumero(getVal(row, 'peso'));
         const qtd = paraNumero(getVal(row, 'quantidade_minima'));
 
@@ -436,7 +445,7 @@ export function processarComponentes(
             ean,
             preco_tabela: preco,
             grupo_desconto: grupoDesconto,
-            unidade: 'UN',
+            unidade: unidade,
             quantidade_minima: qtd,
             peso,
         });
