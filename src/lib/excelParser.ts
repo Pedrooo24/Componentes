@@ -167,6 +167,9 @@ export async function lerExcel(file: File): Promise<RawData> {
     const isZip = data[0] === 0x50 && data[1] === 0x4B && data[2] === 0x03 && data[3] === 0x04; // .xlsx
     const isOle = data[0] === 0xD0 && data[1] === 0xCF && data[2] === 0x11 && data[3] === 0xE0; // .xls
 
+    console.log('[Upload] Magic Bytes:', data.slice(0, 4));
+    console.log('[Upload] Detetado:', isZip ? 'XLSX (Zip)' : isOle ? 'XLS (OLE)' : 'Texto/CSV (Fallback Windows-1252)');
+
     let workbook: XLSX.WorkBook;
 
     if (isZip || isOle) {
