@@ -1,7 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { Componente, ImportResult, ProcessingStatus, HistoricoPreco, Marca, Desconto } from '../types';
 
-const BATCH_SIZE = 1000; 
+const BATCH_SIZE = 1000;
 
 export async function getMarcas(client: SupabaseClient): Promise<Marca[]> {
   const { data, error } = await client
@@ -14,6 +14,33 @@ export async function getMarcas(client: SupabaseClient): Promise<Marca[]> {
     return [];
   }
   return data || [];
+}
+
+export async function inserirMarca(
+  client: SupabaseClient,
+  nome: string
+): Promise<{ sucesso: boolean; marca?: Marca; erro?: string }> {
+  try {
+    const nomeLimpo = nome.trim();
+    if (!nomeLimpo) return { sucesso: false, erro: 'Nome da marca não pode ser vazio.' };
+
+    const { data, error } = await client
+      .from('tblmarca')
+      .insert({ nome: nomeLimpo })
+      .select('idmarca, nome')
+      .single();
+
+    if (error) {
+      if (error.code === '23505') {
+        return { sucesso: false, erro: `A marca "${nomeLimpo}" já existe.` };
+      }
+      return { sucesso: false, erro: error.message };
+    }
+
+    return { sucesso: true, marca: data as Marca };
+  } catch (err) {
+    return { sucesso: false, erro: err instanceof Error ? err.message : 'Erro desconhecido' };
+  }
 }
 
 // === COMPONENTES (PREÇOS) ===
@@ -58,16 +85,16 @@ export async function inserirComponentes(
 
       const { error } = await client
         .from('tblcomponentes')
-        .upsert(dadosBD, { 
+        .upsert(dadosBD, {
           onConflict: 'idmarca, referencia',
-          ignoreDuplicates: false 
+          ignoreDuplicates: false
         });
 
       if (error) {
         console.error(`Erro Lote ${batchNum}:`, error.message);
         result.erros += batch.length;
         if (result.mensagens.length < 10) {
-            result.mensagens.push(`Erro Lote ${batchNum}: ${error.message}`);
+          result.mensagens.push(`Erro Lote ${batchNum}: ${error.message}`);
         }
       } else {
         result.sucesso += batch.length;
@@ -129,17 +156,17 @@ export async function contarComponentes(client: SupabaseClient, idmarca?: number
 }
 
 export async function listarComponentes(
-  client: SupabaseClient, 
-  page = 1, 
-  perPage = 50, 
-  idmarca?: number, 
+  client: SupabaseClient,
+  page = 1,
+  perPage = 50,
+  idmarca?: number,
   pesquisa?: string,
   sortField: string = 'updated_at',
   sortOrder: 'asc' | 'desc' = 'desc'
 ): Promise<{ data: Componente[]; total: number }> {
   const offset = (page - 1) * perPage;
   let query = client.from('tblcomponentes').select('*', { count: 'exact' });
-  
+
   if (idmarca) query = query.eq('idmarca', idmarca);
   if (pesquisa) query = query.or(`referencia.ilike.%${pesquisa}%,descricao.ilike.%${pesquisa}%`);
 
@@ -170,7 +197,7 @@ export async function listarComponentesHistorico(
   sortOrder: 'asc' | 'desc' = 'desc'
 ): Promise<{ data: HistoricoPreco[]; total: number }> {
   const offset = (pagina - 1) * porPagina;
-  
+
   let query = client
     .from('tblcomponenteshistorico')
     .select('idmarca, referencia_backup, precoatual_anterior, valido_ate', { count: 'exact' });

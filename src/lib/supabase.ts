@@ -1,37 +1,27 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SupabaseConfig, Marca } from '../types';
+import { Marca } from '../types';
+import { supabaseConfig } from './config';
 
-const STORAGE_KEY = 'supabase_config';
+// Cliente Singleton
+export const supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+  auth: {
+    persistSession: true, // Agora queremos persistência!
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
 
-export function saveSupabaseConfig(config: SupabaseConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-}
-
-export function loadSupabaseConfig(): SupabaseConfig | null {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return null;
-  }
-}
-
-export function clearSupabaseConfig(): void {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
-export function createSupabaseClient(url: string, key: string): SupabaseClient {
-  // Nota: estamos a usar credenciais manuais (URL + anon key),
-  // por isso desativamos persistência de sessão para reduzir “falsos positivos”.
-  return createClient(url.trim(), key.trim(), {
+/** Factory para criar cliente Supabase dinâmico (usado no SetupPage) */
+export function createSupabaseClient(url: string, anonKey: string): SupabaseClient {
+  return createClient(url, anonKey, {
     auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
     },
   });
 }
+
 
 function hintRLS(table: string): string {
   return `Se tens dados mas a app devolve 0 linhas, é muito provável ser RLS/policies. Confirma que a role anon consegue SELECT em ${table}.`;
@@ -143,4 +133,28 @@ export async function buscarMarcas(client: SupabaseClient): Promise<Marca[]> {
   const res = await buscarMarcasResult(client);
   if (res.error) console.error('Erro ao buscar marcas:', res.error);
   return res.data;
+}
+
+/** Grava configuração Supabase em localStorage para persistência entre sessões */
+export function saveSupabaseConfig(config: { url: string; anonKey: string }): void {
+  try {
+    localStorage.setItem('supabase_config', JSON.stringify(config));
+  } catch (err) {
+    console.error('Erro ao guardar configuração Supabase:', err);
+  }
+}
+
+/** Lê configuração Supabase de localStorage */
+export function loadSupabaseConfig(): { url: string; anonKey: string } | null {
+  try {
+    const raw = localStorage.getItem('supabase_config');
+    if (!raw) return null;
+    const config = JSON.parse(raw);
+    if (config && typeof config.url === 'string' && typeof config.anonKey === 'string') {
+      return config;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

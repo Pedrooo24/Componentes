@@ -5,13 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { listarComponentes, contarComponentes } from '../lib/database';
 import { buscarMarcas } from '../lib/supabase';
 import { Componente, Marca } from '../types';
+import { formatarMoeda, formatarPercentagem } from '../utils/formatters';
 
 interface Props {
   supabaseClient: SupabaseClient;
   refreshTrigger: number;
 }
 
-export type SortField = 'referencia' | 'descricao' | 'preco_tabela' | 'updated_at' | 'unidade' | 'grupo_desconto' | 'idmarca';
+export type SortField = 'referencia' | 'descricao' | 'preco_tabela' | 'updated_at' | 'grupo_desconto' | 'idmarca';
 export type SortOrder = 'asc' | 'desc';
 
 export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
@@ -23,7 +24,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
   const [marcaSelecionada, setMarcaSelecionada] = useState<number | undefined>(undefined);
   const [marcas, setMarcas] = useState<Marca[]>([]);
   const [contagens, setContagens] = useState<Record<number, number>>({});
-  
+
   // Otimização: Mapa de descontos GLOBAL para acesso O(1)
   // Chave: "IDMARCA-GRUPO" (ex: "1-MPG001") -> Valor: 35
   const [mapaDescontos, setMapaDescontos] = useState<Record<string, number>>({});
@@ -37,42 +38,51 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
 
   useEffect(() => {
     carregarMarcas();
+    carregarMarcas();
     verificarDataMaisRecente();
-    // Carregamos os descontos UMA VEZ para todas as marcas
-    carregarTodosDescontos();
+    // REMOVIDO: Carregar todos os descontos (Performance killer)
   }, [supabaseClient, refreshTrigger]);
 
   useEffect(() => {
     carregarDados();
     carregarContagens();
-    // ADICIONADO: 'marcas' aqui para recalcular contagens assim que as marcas carregam
   }, [supabaseClient, pagina, pesquisa, marcaSelecionada, refreshTrigger, sortField, sortOrder, marcas]);
 
-  // Nova função para carregar TUDO de uma vez
-  const carregarTodosDescontos = async () => {
+  // Carregar descontos APENAS quando os componentes (e suas marcas) mudam
+  useEffect(() => {
+    if (componentes.length > 0) {
+      carregarDescontosOtimizado();
+    }
+  }, [componentes]);
+
+  // Otimização: Carrega descontos apenas das marcas visíveis na página atual
+  const carregarDescontosOtimizado = async () => {
+    const idsMarcasVisiveis = [...new Set(componentes.map(c => c.idmarca))];
+
+    if (idsMarcasVisiveis.length === 0) return;
+
     try {
       const { data, error } = await supabaseClient
         .from('tbldescontos')
-        .select('idmarca, grupo_desconto, valor_desconto');
+        .select('idmarca, grupo_desconto, valor_desconto')
+        .in('idmarca', idsMarcasVisiveis);
 
       if (error) throw error;
-      
-      const mapa: Record<string, number> = {};
-      data?.forEach((r: any) => {
-        if (r.grupo_desconto && r.idmarca) {
-          // Criamos uma chave única combinando Marca e Grupo
-          // Usamos trim() para garantir que espaços extra não estragam o match
-          const chave = `${r.idmarca}-${String(r.grupo_desconto).trim()}`;
-          
-          // LÓGICA DE CORREÇÃO AQUI: Se for decimal (ex: 0.69), converte para 69.
-          mapa[chave] = (r.valor_desconto > 0 && r.valor_desconto <= 1) 
-            ? r.valor_desconto * 100 
-            : r.valor_desconto;
-        }
+
+      // Atualiza o mapa existente com os novos dados (merge)
+      setMapaDescontos(prev => {
+        const novoMapa = { ...prev };
+        data?.forEach((r: any) => {
+          if (r.grupo_desconto && r.idmarca) {
+            const chave = `${r.idmarca}-${String(r.grupo_desconto).trim()}`;
+            // Usa o valor direto da BD, o formatador tratará da exibição
+            novoMapa[chave] = r.valor_desconto;
+          }
+        });
+        return novoMapa;
       });
-      setMapaDescontos(mapa);
     } catch (err) {
-      console.error("Erro ao carregar mapa de descontos:", err);
+      console.error("Erro ao carregar descontos otimizados:", err);
     }
   };
 
@@ -91,7 +101,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
     setPagina(1);
     setPesquisa('');
     verificarDataMaisRecente();
-    carregarTodosDescontos(); // Recarrega descontos também
+    setMapaDescontos({}); // Limpa cache de descontos ao refrescar
   };
 
   const carregarMarcas = async () => {
@@ -107,7 +117,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
         .order('updated_at', { ascending: false })
         .limit(1)
         .single();
-      
+
       if (data) setDataMaisRecenteGlobal(data.updated_at);
     } catch (err) {
       console.error('Erro data recente:', err);
@@ -128,13 +138,13 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
   const carregarDados = async () => {
     setLoading(true);
     const { data, total: totalCount } = await listarComponentes(
-      supabaseClient, 
-      pagina, 
-      porPagina, 
-      marcaSelecionada, 
+      supabaseClient,
+      pagina,
+      porPagina,
+      marcaSelecionada,
       pesquisa,
-      sortField, 
-      sortOrder  
+      sortField,
+      sortOrder
     );
     setComponentes(data);
     setTotal(totalCount);
@@ -155,10 +165,8 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
     return marca?.nome || `Marca ${idmarca}`;
   };
 
-  const formatarPreco = (preco: number | null) => {
-    if (preco === null) return '—';
-    return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(preco);
-  };
+  // Removido formatarPreco local, usando utilitário
+  // Removido getNomeMarca duplicado se não for usado noutro sitio (mas é usado no render)
 
   const formatarData = (data: string | undefined) => {
     if (!data) return '—';
@@ -176,9 +184,9 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
     const active = sortField === field;
     return (
       <span className={`flex flex-col items-center justify-center w-3 h-3 transition-opacity ${active ? 'opacity-100' : 'opacity-20 group-hover:opacity-50'}`}>
-        {active && sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#208080]" /> : 
-         active && sortOrder === 'desc' ? <ArrowDown className="w-3 h-3 text-[#208080]" /> : 
-         <div className="flex flex-col"><ArrowUp className="w-2 h-2" /><ArrowDown className="w-2 h-2" /></div>}
+        {active && sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 text-[#208080]" /> :
+          active && sortOrder === 'desc' ? <ArrowDown className="w-3 h-3 text-[#208080]" /> :
+            <div className="flex flex-col"><ArrowUp className="w-2 h-2" /><ArrowDown className="w-2 h-2" /></div>}
       </span>
     );
   };
@@ -289,9 +297,6 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
               <th onClick={() => handleSort('preco_tabela')} className={`${thBase} text-[#8b949e]`}>
                 <div className={thContent}>Preço {renderSortIcon('preco_tabela')}</div>
               </th>
-              <th onClick={() => handleSort('unidade')} className={`${thBase} text-[#8b949e]`}>
-                <div className={thContent}>Unidade {renderSortIcon('unidade')}</div>
-              </th>
               <th onClick={() => handleSort('updated_at')} className={`${thBase} text-[#8b949e]`}>
                 <div className={thContent}>Atualizado {renderSortIcon('updated_at')}</div>
               </th>
@@ -301,7 +306,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
             <AnimatePresence mode="wait">
               {loading ? (
                 <motion.tr key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <td colSpan={7} className="px-4 py-12 text-center text-[#8b949e]">
+                  <td colSpan={6} className="px-4 py-12 text-center text-[#8b949e]">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-8 h-8 rounded-full border-[2.5px] border-[#30363d] border-t-[#208080] animate-spin" />
                       <span className="text-sm">A carregar componentes...</span>
@@ -310,7 +315,7 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
                 </motion.tr>
               ) : componentes.length === 0 ? (
                 <motion.tr key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <td colSpan={7} className="px-4 py-12 text-center text-[#6e7681]">
+                  <td colSpan={6} className="px-4 py-12 text-center text-[#6e7681]">
                     <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
                     <p>Nenhum componente encontrado</p>
                   </td>
@@ -318,11 +323,11 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
               ) : (
                 componentes.map((comp, index) => {
                   const isRisk = isProdutoAntigo(comp.updated_at);
-                  
+
                   // Lógica de Cruzamento: Agora usa ID da Marca + Grupo para ser preciso
                   const chaveMatch = `${comp.idmarca}-${String(comp.grupo_desconto || '').trim()}`;
                   const valorDesconto = mapaDescontos[chaveMatch];
-                  
+
                   return (
                     <motion.tr
                       key={comp.idcomponente}
@@ -348,14 +353,16 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
                           {getNomeMarca(comp.idmarca)}
                         </span>
                       </td>
-                      
+
                       {/* CÉLULA DESCONTO CORRIGIDA: Texto Branco, Font Medium */}
                       <td className="px-4 py-3 text-center">
                         {valorDesconto !== undefined ? (
-                           <div className="flex flex-col items-center">
-                             <span className="text-base font-medium text-[#f0f6fc] tabular-nums">{valorDesconto}%</span>
-                             <span className="text-[10px] text-[#6e7681] opacity-60">{comp.grupo_desconto}</span>
-                           </div>
+                          <div className="flex flex-col items-center">
+                            <span className="text-base font-medium text-[#f0f6fc] tabular-nums">
+                              {formatarPercentagem(valorDesconto)}
+                            </span>
+                            <span className="text-[10px] text-[#6e7681] opacity-60">{comp.grupo_desconto}</span>
+                          </div>
                         ) : (
                           <span className="text-sm text-[#8b949e]">{comp.grupo_desconto || '—'}</span>
                         )}
@@ -363,12 +370,10 @@ export function TabelaComponentes({ supabaseClient, refreshTrigger }: Props) {
 
                       <td className="px-4 py-3 text-center">
                         <span className={`font-medium tabular-nums ${isRisk ? 'text-red-300/60' : 'text-[#f0f6fc]'}`}>
-                          {formatarPreco(comp.preco_tabela)}
+                          {formatarMoeda(comp.preco_tabela)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="text-sm text-[#8b949e]">{comp.unidade || '—'}</span>
-                      </td>
+
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <span className={`text-xs tabular-nums px-2 py-1 rounded ${isRisk ? 'text-red-400/70 font-medium' : 'text-[#6e7681]'}`}>

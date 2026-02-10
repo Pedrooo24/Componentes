@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { listarDescontos } from '../lib/database';
 import { buscarMarcas } from '../lib/supabase';
 import { Desconto, Marca } from '../types';
+import { formatarPercentagem } from '../utils/formatters';
 
 interface Props {
   supabaseClient: SupabaseClient;
@@ -34,7 +35,7 @@ export function TabelaDescontos({ supabaseClient, refreshTrigger }: Props) {
     // Ordena por ID da marca (Crescente)
     const marcasOrdenadas = marcasDB.sort((a, b) => a.idmarca - b.idmarca);
     setMarcas(marcasOrdenadas);
-    
+
     if (marcasOrdenadas.length > 0 && !marcaSelecionada) {
       setMarcaSelecionada(marcasOrdenadas[0].idmarca);
     }
@@ -125,10 +126,7 @@ export function TabelaDescontos({ supabaseClient, refreshTrigger }: Props) {
                 </motion.tr>
               ) : (
                 descontos.map((item, idx) => {
-                  // Lógica de visualização: se for <= 1 (ex: 0.71), multiplica por 100.
-                  const valorVisual = item.valor_desconto <= 1 && item.valor_desconto > 0 
-                    ? item.valor_desconto * 100 
-                    : item.valor_desconto;
+                  // Lógica de visualização centralizada no formatarPercentagem
 
                   return (
                     <motion.tr
@@ -145,7 +143,7 @@ export function TabelaDescontos({ supabaseClient, refreshTrigger }: Props) {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span className="text-base font-bold text-[#2aa0a0]">
-                          {Number(valorVisual).toLocaleString('pt-PT', { maximumFractionDigits: 2 })}%
+                          {formatarPercentagem(item.valor_desconto)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center text-sm text-[#6e7681]">
