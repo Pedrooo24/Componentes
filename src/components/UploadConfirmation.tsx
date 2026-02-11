@@ -1,4 +1,4 @@
-import { CheckCircle2, AlertTriangle, AlertCircle, X, Upload, Percent, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, AlertCircle, X, Upload, Percent, Eye, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ParsedUploadData, ParsedDescontosData, Marca, CenarioDesconto } from '../types';
 import { useState } from 'react';
@@ -10,6 +10,7 @@ import { useState } from 'react';
 interface ComponentesConfirmProps {
     data: ParsedUploadData;
     marca: Marca;
+    fileName: string; // [NEW] Nome do ficheiro
     onConfirm: () => void;
     onCancel: () => void;
     isUploading: boolean;
@@ -36,7 +37,7 @@ function CenarioBadge({ cenario }: { cenario: CenarioDesconto }) {
     );
 }
 
-export function UploadComponentesConfirm({ data, marca, onConfirm, onCancel, isUploading }: ComponentesConfirmProps) {
+export function UploadComponentesConfirm({ data, marca, fileName, onConfirm, onCancel, isUploading }: ComponentesConfirmProps) {
     const [showPreview, setShowPreview] = useState(false);
     const [showIgnored, setShowIgnored] = useState(false);
 
@@ -55,8 +56,11 @@ export function UploadComponentesConfirm({ data, marca, onConfirm, onCancel, isU
                         <Upload className="w-5 h-5" style={{ color: '#208080' }} />
                     </div>
                     <div>
-                        <h3 className="font-semibold" style={{ color: '#f0f6fc' }}>Confirmar Upload de Componentes</h3>
-                        <p className="text-xs" style={{ color: '#8b949e' }}>Revê os dados antes de carregar</p>
+                        <h3 className="font-semibold" style={{ color: '#f0f6fc' }}>Confirmar Upload</h3>
+                        <p className="text-xs flex items-center gap-1" style={{ color: '#8b949e' }}>
+                            <FileSpreadsheet className="w-3 h-3" />
+                            {fileName}
+                        </p>
                     </div>
                 </div>
                 <button onClick={onCancel} className="p-2 rounded-lg hover:bg-[#21262d] cursor-pointer" style={{ color: '#8b949e' }}>
@@ -95,9 +99,13 @@ export function UploadComponentesConfirm({ data, marca, onConfirm, onCancel, isU
                     <div className="space-y-2">
                         {data.avisos.map((aviso, i) => (
                             <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg text-xs"
-                                style={{ backgroundColor: 'rgba(249, 115, 22, 0.06)', border: '1px solid rgba(249, 115, 22, 0.2)', color: '#f97316' }}
+                                style={{
+                                    backgroundColor: '#0d1117', // [MODIFIED] Dark background instead of orange
+                                    border: '1px solid #30363d', // [MODIFIED] Subtle border
+                                    color: '#f0f6fc' // [MODIFIED] Light text
+                                }}
                             >
-                                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#f97316' }} /> {/* [MODIFIED] Orange icon */}
                                 <span>{aviso}</span>
                             </div>
                         ))}

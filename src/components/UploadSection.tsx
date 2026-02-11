@@ -29,6 +29,15 @@ type TipoImportacao = 'componentes' | 'descontos';
 type InputMode = 'ficheiro' | 'colar';
 type FlowStep = 'input' | 'validacao' | 'confirmacao' | 'resultado';
 
+// Helper para limpar nome do ficheiro (Supabase não gosta de acentos/espaços)
+function sanitizeFileName(name: string): string {
+  return name
+    .normalize('NFD') // Separa acentos das letras
+    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .replace(/[^a-zA-Z0-9.-]/g, '_') // Substitui caracteres estranhos por _
+    .replace(/_{2,}/g, '_'); // Evita __ duplicados
+}
+
 export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
   const { user } = useAuth();
 
@@ -72,7 +81,7 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
     const res = await buscarMarcasResult(supabaseClient);
     setMarcas(res.data);
     if (res.data.length > 0 && !marcaSelecionada) {
-      // setMarcaSelecionada(res.data[0].idmarca); // REMOVIDO: Obrigatório selecionar explicitamente
+      // setMarcaSelecionada(res.data[0].idmarca);
     }
   };
 
@@ -249,6 +258,24 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
         }
       }
 
+      // 3. Upload Ficheiro (Supabase Storage) - Guardar evidência
+      if (ficheiro) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const cleanName = sanitizeFileName(ficheiro.name);
+        const path = `uploads/${timestamp}_${cleanName}`;
+
+        const { error: uploadError } = await supabaseClient.storage
+          .from('uploads')
+          .upload(path, ficheiro);
+
+        if (uploadError) {
+          console.error("Erro upload storage:", uploadError);
+          res.mensagens.push(`⚠️ Aviso: Ficheiro não guardado no Storage (${uploadError.message}). Os dados foram importados.`);
+        } else {
+          res.mensagens.push(`💾 Ficheiro guardado em '${path}'`);
+        }
+      }
+
       setFlowStep('resultado');
       onImportCompleta();
     } catch (err) {
@@ -267,6 +294,22 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
     try {
       const res = await upsertDescontos(supabaseClient, parsedDescontos.descontos);
       if (!res.sucesso) throw new Error(res.msg);
+
+      // Upload Ficheiro (Supabase Storage)
+      if (ficheiro) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const cleanName = sanitizeFileName(ficheiro.name);
+        const path = `uploads/${timestamp}_${cleanName}`;
+
+        const { error: uploadError } = await supabaseClient.storage
+          .from('uploads')
+          .upload(path, ficheiro);
+
+        if (uploadError) {
+          console.error("Erro upload storage:", uploadError);
+          // Não falha o processo todo, apenas avisa (opcional)
+        }
+      }
 
       setResultadoDescontos({ total: parsedDescontos.descontos.length });
       setFlowStep('resultado');
@@ -585,6 +628,7 @@ export function UploadSection({ supabaseClient, onImportCompleta }: Props) {
                 <UploadComponentesConfirm
                   data={parsedData}
                   marca={marcaObj}
+                  fileName={ficheiro?.name || 'Dados colados'}
                   onConfirm={handleUploadComponentes}
                   onCancel={resetFlow}
                   isUploading={isUploading}
